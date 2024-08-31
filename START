@@ -1,0 +1,5 @@
+loadstring(game:HttpGet(('https://raw.githubusercontent.com/Golgrax/tes/main/AUTO%20BLOCK%20MID'),true))()
+
+loadstring(game:HttpGet(('https://raw.githubusercontent.com/Golgrax/tes/main/AUTO%20BLOCK%204%20SIDES'),true))()
+
+loadstring(game:HttpGet(('https://raw.githubusercontent.com/Golgrax/tes/main/AUTOMOVE%20AI'),true))()
