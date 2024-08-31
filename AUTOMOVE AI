@@ -1,0 +1,193 @@
+-- Superbly Advanced AI
+-- Place this script in a LocalScript under StarterPlayer -> StarterPlayerScripts
+
+local player = game.Players.LocalPlayer
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoidRootPart
+local humanoid
+
+local toolName = "Bomb"
+local maxSpeed = 95
+local normalSpeed = 70
+local speedIncreaseRate = 5
+local hasBombTool = false
+local lastTarget = nil
+local unanchoredByTool = false  -- Track if unanchored by tool presence
+local topPart
+
+
+-- Function to ensure the character and components are loaded
+local function ensureCharacterComponents()
+    character = player.Character or player.CharacterAdded:Wait()
+    humanoidRootPart = character:WaitForChild("HumanoidRootPart", 5)
+    humanoid = character:WaitForChild("Humanoid", 5)
+    
+    -- Disable jumping
+    humanoid.JumpPower = 0
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
+    humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, false)  -- Disable freefall state
+end
+
+-- Function to manage top part
+
+local function manageTopPart()
+    if not topPart then
+        -- Create the top part if it doesn't exist
+        topPart = Instance.new("Part")
+        topPart.Size = Vector3.new(5, 1, 5) -- 5x5 studs
+        topPart.Anchored = true
+        topPart.Transparency = 0.5
+        topPart.CanCollide = true
+        topPart.BrickColor = BrickColor.new("Bright blue")
+        topPart.Parent = workspace
+    end
+    
+end
+
+-- Function to update the top part position
+local function updateTopPart()
+    if topPart then
+        local targetPosition = humanoidRootPart.Position + Vector3.new(0, humanoidRootPart.Size.Y + 2, 0)
+        topPart.Position = targetPosition
+    end
+end
+
+-- Function to handle character respawn
+local function onCharacterAdded(newCharacter)
+    character = newCharacter
+    ensureCharacterComponents()
+    unanchoredByTool = false  -- Reset the unanchored state
+
+    -- Stop movement for 8 seconds after respawn
+    humanoid:Move(Vector3.new(0, 0, 0))
+    wait(8)
+
+    -- Resume AI movement and unanchor if any player has the Bomb tool
+    moveAI()
+end
+
+player.CharacterAdded:Connect(onCharacterAdded)
+
+ensureCharacterComponents()
+manageTopPart()
+
+-- Function to check if the player has the Bomb tool
+local function hasTool(player)
+    return player.Character and player.Character:FindFirstChild(toolName) or player.Backpack:FindFirstChild(toolName)
+end
+
+-- Function to get the nearest player without the Bomb tool
+local function getNearestPlayerWithoutBomb()
+    local closestPlayer = nil
+    local closestDistance = math.huge
+    for _, otherPlayer in pairs(game.Players:GetPlayers()) do
+        if otherPlayer ~= player and otherPlayer.Character and otherPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local distance = (humanoidRootPart.Position - otherPlayer.Character.HumanoidRootPart.Position).Magnitude
+            if distance < closestDistance and not hasTool(otherPlayer) then
+                closestPlayer = otherPlayer
+                closestDistance = distance
+            end
+        end
+    end
+    return closestPlayer, closestDistance
+end
+
+-- Function to check if any player has the Bomb tool
+local function anyPlayerHasBomb()
+    for _, otherPlayer in pairs(game.Players:GetPlayers()) do
+        if hasTool(otherPlayer) then
+            return true
+        end
+    end
+    return false
+end
+
+-- Function to check if there are only 3 players left in the "Players" team
+local function isThreePlayersLeft()
+    local playersInTeam = game.Teams.Players:GetPlayers()
+    return #playersInTeam <= 3
+end
+
+-- Function to manage anchoring based on touching the ground and player count
+local function manageAnchoring()
+    if humanoidRootPart.Velocity.Y == 0 then
+        if anyPlayerHasBomb() then
+            humanoidRootPart.Anchored = false  -- Unanchor if any player has the Bomb tool and AI touches the ground
+            unanchoredByTool = true  -- Mark as unanchored due to tool presence
+        elseif isThreePlayersLeft() then
+            humanoidRootPart.Anchored = true  -- Anchor if 3 players are left, no one has the Bomb tool, and AI touches the ground
+            unanchoredByTool = false  -- Reset the unanchored state
+        else
+            if not unanchoredByTool then
+                humanoidRootPart.Anchored = true  -- Anchor if no player has the Bomb tool, more than 3 players remain, and AI touches the ground
+            end
+        end
+    end
+end
+
+-- Function to move the AI directly toward the target without jumping
+local function moveToPositionNoJump(targetPosition)
+    local direction = (targetPosition - humanoidRootPart.Position).Unit
+    local targetPositionOnGround = Vector3.new(targetPosition.X, humanoidRootPart.Position.Y, targetPosition.Z)
+    humanoid:MoveTo(targetPositionOnGround)
+end
+
+-- Function to reduce sliding effect
+local function reduceSliding()
+    local velocity = humanoidRootPart.Velocity
+    humanoidRootPart.Velocity = Vector3.new(velocity.X * 0.95, math.min(velocity.Y, 0), velocity.Z * 0.95)  -- Clamp Y velocity to prevent jumps
+end
+
+-- Function to handle the AI movement logic
+function moveAI()
+    while true do
+        wait(0.05)
+
+        -- Manage anchoring based on the AI touching the ground, Bomb tool presence, and player count
+        manageAnchoring()
+
+        hasBombTool = hasTool(player)
+
+        -- Reduce sliding on every update
+        reduceSliding()
+
+        -- Reset last target if they no longer have the Bomb tool
+        if lastTarget and lastTarget.Character and lastTarget.Character:FindFirstChild("HumanoidRootPart") then
+            if not hasTool(lastTarget) then
+                lastTarget = nil
+            end
+        end
+
+        local nearestPlayer, distance = getNearestPlayerWithoutBomb()
+
+        if hasBombTool then
+            -- The player has the Bomb tool
+            if nearestPlayer then
+                -- Increase the speed gradually while the player has the Bomb
+                if humanoid.WalkSpeed < maxSpeed then
+                    humanoid.WalkSpeed = humanoid.WalkSpeed + speedIncreaseRate
+                end
+                moveToPositionNoJump(nearestPlayer.Character.HumanoidRootPart.Position)
+            end
+        else
+            -- The player does not have the Bomb tool
+            humanoid.WalkSpeed = normalSpeed  -- Reset to normal speed
+            if nearestPlayer then
+                if distance <= 2 then
+                    -- Move away to maintain 2-stud distance
+                    local direction = (humanoidRootPart.Position - nearestPlayer.Character.HumanoidRootPart.Position).Unit
+                    humanoid:MoveTo(humanoidRootPart.Position + direction * 4)
+                else
+                    -- Move directly towards the target
+                    moveToPositionNoJump(nearestPlayer.Character.HumanoidRootPart.Position)
+                end
+            end
+        end
+
+        -- Update positions of top part
+        updateTopPart()
+    end
+end
+
+-- Start the AI movement loop
+moveAI()

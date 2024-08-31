@@ -1,0 +1,78 @@
+-- Get the required services
+local Players = game:GetService("Players")
+local Teams = game:GetService("Teams")
+local Workspace = game:GetService("Workspace")
+
+-- Define the new block size and coordinates
+local blockSize = Vector3.new(100, 1, 100)  -- Updated size
+local coordinates = {
+    Vector3.new(0, 43, 0)
+}
+
+-- Define a manual adjustment variable for easier tweaking
+local yOffsetAdjustment = 1  -- Increase this value to lower the platform, decrease it to raise it
+
+-- Function to create a block at the fixed X, Z positions and further below LocalPlayer's foot position
+local function createBlocksUnderPlayer(player)
+    -- Ensure the player has a character model
+    if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+        return
+    end
+
+    -- Get the Y position of the HumanoidRootPart (center of player)
+    local hrp = player.Character.HumanoidRootPart
+    local playerY = hrp.Position.Y - (hrp.Size.Y / 2) - blockSize.Y - yOffsetAdjustment  -- Adjusted with yOffsetAdjustment
+
+    -- Create blocks at fixed X, Z coordinates but at adjusted Y position
+    for _, coord in ipairs(coordinates) do
+        local block = Instance.new("Part")
+        block.Size = blockSize
+        block.Position = Vector3.new(coord.X, playerY, coord.Z)
+        block.Anchored = true
+        block.Parent = Workspace
+    end
+end
+
+-- Function to remove all blocks created by the script
+local function removeBlocks()
+    for _, part in ipairs(Workspace:GetChildren()) do
+        if part:IsA("Part") and part.Anchored and part.Size == blockSize then
+            part:Destroy()
+        end
+    end
+end
+
+-- Function to check the number of players in the team and handle block creation
+local function checkPlayers()
+    while true do
+        local team = Teams:FindFirstChild("Players")
+        if team then
+            local playerCount = 0
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player.Team == team then
+                    playerCount = playerCount + 1
+                end
+            end
+
+            if playerCount > 0 and playerCount <= 3 then
+                -- Only update block positions if there are players in the team
+                local localPlayer = Players.LocalPlayer
+                if localPlayer and localPlayer.Team == team then
+                    removeBlocks()  -- Clear existing blocks
+                    createBlocksUnderPlayer(localPlayer)
+                end
+            else
+                -- Remove blocks if no players or more than 3 players
+                removeBlocks()
+            end
+        else
+            -- Remove blocks if the team doesn't exist
+            removeBlocks()
+        end
+        
+        wait(0.1) -- Check every 0.1 seconds for smoother block movement
+    end
+end
+
+-- Start the player check loop
+checkPlayers()
